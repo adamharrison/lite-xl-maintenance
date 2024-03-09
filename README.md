@@ -9,7 +9,7 @@ By default, lpm doesn't load any extra functionality. You can change this one of
 1. Add in `--plugin` to your lpm call with the path the the plugin you'd like to have extend `lpm`'s functionality. You can specify `--plugin` multiple times. Best place to do this is in an `lpm` BASH script in your path, like so:
 
 ```bash
-lpm $@ --plugin ~/lite-xl-maintenance/plugins/gh.lua
+lpm $@ --plugin ~/lite-xl-maintenance/lpm-plugins/gh.lua
 ```
 
 2. Export the variable `LPM_PLUGINS` to your environment; this is a colon separated list of plugin paths that will be loaded with each lpm call.
