@@ -23,7 +23,7 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
   ARGS = common.args(ARGS, { target = "string", source = "string", staging = "string", name = "string" })
   local target = ARGS["target"] or "git@github.com:lite-xl/lite-xl-plugins.git:master"
   local staging = ARGS["staging"] or os.getenv("LPM_ADDON_STAGING_REPO")
-  assert(staging, "requires a staging plugins repository")
+  assert(staging, "requires a staging plugins repository; supply one with the environment variable LPM_ADDON_STAGING_REPO, or with `--staging`.")
   local source = ARGS["source"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":HEAD")
 
   local name = ARGS["name"] or common.basename(system.stat(".").abs_path)
