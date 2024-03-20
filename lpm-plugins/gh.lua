@@ -34,7 +34,7 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
   assert(staging_owner and target_project == staging_project, "invalid staging")
   local source_owner, source_project, source_branch = source:match("([%w-]+)/([%w-]+)%.git:([%w-]+)$")
   assert(source_branch)
-  local source_commit = run_command("git rev-parse " .. source_branch)
+  local source_commit = run_command("git rev-parse " .. source_branch):gsub("\n$", "")
   local updating_manifest = json.decode(common.read("manifest.json"))
   local updating_addons = common.slice(ARGS, 4, #ARGS)
   if #updating_addons > 0 then
