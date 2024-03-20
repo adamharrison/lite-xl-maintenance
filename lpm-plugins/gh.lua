@@ -72,7 +72,7 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
       target_manifest.addons[target_map[v.id]] = common.merge(target_manifest.addons[target_map[v.id]], entry)
     end
   end
-  common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }))
+  common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }) .. "\n")
   assert(os.execute(string.format("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.' && git push -f --set-upstream origin PR/update-manifest-%s", path, name)))
   local result = json.decode(run_command(string.format("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, name)))
   if result and #result == 0 then
