@@ -22,19 +22,17 @@ end
 if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
   ARGS = common.args(ARGS, { target = "string", source = "string", staging = "string", name = "string" })
   local target = ARGS["target"] or "git@github.com:lite-xl/lite-xl-plugins.git:master"
-  local staging = ARGS["staging"] or os.getenv("LPM_ADDON_STAGING_REPO")
-  assert(staging, "requires a staging plugins repository; supply one with the environment variable LPM_ADDON_STAGING_REPO, or with `--staging`.")
-  local source = ARGS["source"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":HEAD")
-
-  local name = ARGS["name"] or common.basename(system.stat(".").abs_path)
   local target_url, target_branch = target:match("^(.*):(%w+)$")
   local target_owner, target_project = target:match("git@github.com:([%w-]+)/([%w-]+).git")
   assert(target_url and target_branch and target_owner and target_project, "invalid target")
-  local staging_owner, staging_project = staging:match("git@github.com:([%w-]+)/([%w-]+).git")
-  assert(staging_owner and target_project == staging_project, "invalid staging")
+  local source = ARGS["source"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":HEAD")
   local source_owner, source_project, source_branch = source:match("([%w-]+)/([%w-]+)%.git:([%w-]+)$")
   assert(source_branch)
   local source_commit = run_command("git rev-parse " .. source_branch):gsub("\n$", "")
+
+  local staging = ARGS["staging"] or os.getenv("LPM_ADDON_STAGING_REPO") or ("git@github.com:" .. source_owner .. "/" .. target_project)
+  local staging_owner, staging_project = staging:match("git@github.com:([%w-]+)/([%w-]+).git")
+  assert(staging_owner and target_project == staging_project, "invalid staging")
   local updating_manifest = json.decode(common.read("manifest.json"))
   local updating_addons = common.slice(ARGS, 4, #ARGS)
   if #updating_addons > 0 then
@@ -48,12 +46,14 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
   end
   local path = TMPDIR .. PATHSEP .. "pr"
   common.rmrf(path)
-  assert(os.execute(string.format("git clone %s %s", staging, path)))
+  assert(os.execute(string.format("git clone --depth=1 %s %s", staging, path)))
   local staging_branch = "origin/master"
   if target ~= staging then
-    assert(os.execute(string.format("cd %s && git remote add upstream %s && git fetch upstream", path, target_url)))
+    assert(os.execute(string.format("cd %s && git remote add upstream %s && git fetch --depth=1 upstream", path, target_url)))
     staging_branch = "upstream/master"
   end
+
+  local name = ARGS["name"] or common.basename(system.stat(".").abs_path)
   assert(os.execute(string.format("cd %s && git checkout -B 'PR/update-manifest-%s' && git reset %s --hard", path, name, staging_branch)))
   local target_manifest = json.decode(common.read(path .. PATHSEP .. "manifest.json"))
   local target_map = {}
@@ -62,10 +62,12 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
     local entry = {
       id = v.id,
       version = v.version,
+      mod_version = v.mod_version,
       remote = string.format("https://github.com/%s/%s.git:%s", source_owner, source_project, source_commit)
     }
     if v.name then entry.name = v.name end
     if v.description then entry.description = v.description end
+    if v.tags then entry.tags = v.tags end
     if not target_map[v.id] then
       table.insert(target_manifest.addons, v)
     else
@@ -73,10 +75,14 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
     end
   end
   common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }) .. "\n")
-  assert(os.execute(string.format("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.' && git push -f --set-upstream origin PR/update-manifest-%s", path, name)))
-  local result = json.decode(run_command(string.format("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, name)))
-  if result and #result == 0 then
-    assert(os.execute(string.format("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for %s.'", target_owner, target_project, staging_owner, name, name, name)))
+  if not os.execute("git diff --exit-code -s manifest.json") then
+    assert(os.execute(string.format("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.' && git push -f --set-upstream origin PR/update-manifest-%s", path, name)))
+    local result = json.decode(run_command(string.format("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, name)))
+    if result and #result == 0 then
+      assert(os.execute(string.format("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for %s.'", target_owner, target_project, staging_owner, name, name, name)))
+    end
+  else
+    log.warning("no change to manifest.json; not creating pr")
   end
   os.exit(0)
 end
