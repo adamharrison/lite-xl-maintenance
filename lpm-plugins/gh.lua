@@ -20,7 +20,7 @@ function Repository.url(url, ...)
 end
 
 if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
-  ARGS = common.args(ARGS, { target = "string", source = "string", staging = "string", name = "string" })
+  ARGS = common.args(ARGS, { target = "string", source = "string", staging = "string", name = "string", ["no-pr"] = "flag" })
   local target = ARGS["target"] or "git@github.com:lite-xl/lite-xl-plugins.git:master"
   local target_url, target_branch = target:match("^(.*):(%w+)$")
   local target_owner, target_project = target:match("git@github.com:([%w-]+)/([%w-]+).git")
@@ -31,7 +31,7 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
   local source_commit = run_command("git rev-parse " .. source_branch):gsub("\n$", "")
 
   local staging = ARGS["staging"] or os.getenv("LPM_ADDON_STAGING_REPO") or ("git@github.com:" .. source_owner .. "/" .. target_project)
-  local staging_owner, staging_project = staging:match("git@github.com:([%w-]+)/([%w-]+).git")
+  local staging_owner, staging_project = staging:match("git@github.com:([%w-]+)/([%w-]+)%.?g?i?t?$")
   assert(staging_owner and target_project == staging_project, "invalid staging")
   local updating_manifest = json.decode(common.read("manifest.json"))
   local updating_addons = common.slice(ARGS, 4, #ARGS)
@@ -77,9 +77,11 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
   common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }) .. "\n")
   if not os.execute("git diff --exit-code -s manifest.json") then
     assert(os.execute(string.format("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.' && git push -f --set-upstream origin PR/update-manifest-%s", path, name)))
-    local result = json.decode(run_command(string.format("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, name)))
-    if result and #result == 0 then
-      assert(os.execute(string.format("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for %s.'", target_owner, target_project, staging_owner, name, name, name)))
+    if not ARGS["no-pr"] then
+      local result = json.decode(run_command(string.format("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, name)))
+      if result and #result == 0 then
+        assert(os.execute(string.format("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for %s.'", target_owner, target_project, staging_owner, name, name, name)))
+      end
     end
   else
     log.warning("no change to manifest.json; not creating pr")

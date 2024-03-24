@@ -25,6 +25,18 @@ Adds github-related functionality to lpm. Requires `gh` installed.
 (ensure that your user has a fork of lite-xl-plugins in which to stage the change, and that your manifest is fully up to date).
 
 ```
-wget https://github.com/lite-xl/lite-xl-plugin-manager/releases/download/latest/lpm.x86_64-linux -O lpm && chmod +x lpm &&\
-  ./lpm --plugin https://raw.githubusercontent.com/adamharrison/lite-xl-maintenance/16059a50c6094d030c21f804ee9fe76a0ddaf40e/lpm-plugins/gh.lua create-addon-update-pr
+name: Create PR to lite-xl-plugins
+on:
+  workflow_dispatch:
+jobs:
+  create_pr:
+    name: Create PR to lite-xl-plugins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Create PR
+        env: { GITHUB_TOKEN: "${{ github.token }}" }
+        run: |
+          wget https://github.com/lite-xl/lite-xl-plugin-manager/releases/download/latest/lpm.x86_64-linux -O lpm && chmod +x lpm &&
+            ./lpm --plugin https://raw.githubusercontent.com/adamharrison/lite-xl-maintenance/latest/lpm-plugins/gh.lua create-addon-update-pr
 ```
