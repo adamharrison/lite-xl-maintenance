@@ -23,10 +23,10 @@ if ARGS[2] == "gh" and ARGS[3] == "create-addon-update-pr" then
   ARGS = common.args(ARGS, { target = "string", source = "string", staging = "string", name = "string", ["no-pr"] = "flag" })
   local target = ARGS["target"] or "git@github.com:lite-xl/lite-xl-plugins.git:master"
   local target_url, target_branch = target:match("^(.*):(%w+)$")
-  local target_owner, target_project = target:match("git@github.com:([%w-]+)/([%w-]+).git")
+  local target_owner, target_project = target:match("git@github.com:([%w-]+)/([%w-]+)%.?g?i?t?")
   assert(target_url and target_branch and target_owner and target_project, "invalid target")
   local source = ARGS["source"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":HEAD")
-  local source_owner, source_project, source_branch = source:match("([%w-]+)/([%w-]+)%.git:([%w-]+)$")
+  local source_owner, source_project, source_branch = source:match("([%w-]+)/([%w-]+)%.?g?i?t?:([%w-]+)$")
   assert(source_branch, "can't find source branch")
   local source_commit = run_command("git rev-parse " .. source_branch):gsub("\n$", "")
 
