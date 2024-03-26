@@ -28,22 +28,36 @@ local function retrieve_owner_project_branch(url)
   return url:match("^(.*([%w-]+)/([%w-]+)%.?g?i?t?):?([%w-]*)$")
 end
 
+local function retrieve_repository_origin(path)
+  if not system.stat(path .. PATHSEP .. ".git/config") then return nil end
+  return common.read(path .. PATHSEP .. ".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)")
+end
+
 -- options.source is the repository:branch containing the plugin in question.
 -- options.target is repository:branch we create the PR in.
--- options.staging is a fork of options.target, or exactly equal to options.target, minus the branch.
+-- options.staging is a fork of options.target, or exactly equal to options.target
+-- options.staging_local is a
 local function create_addon_pr(options, addons)
   local target = options["target"] or "git@github.com:lite-xl/lite-xl-plugins.git:master"
   local target_url, target_owner, target_project, target_branch = retrieve_owner_project_branch(target)
   assert(target_url and target_branch and target_owner and target_project, "invalid target " .. target)
 
-  local source = options["source"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":HEAD")
+  local source = options["source"] or (retrieve_repository_origin(".") .. ":HEAD")
   local source_url, source_owner, source_project, source_branch = retrieve_owner_project_branch(source)
   assert(source_branch, "can't find source branch from" .. source)
   local source_commit = common.is_commit_hash(source_branch) and source_branch or run_command("git ls-remote %s refs/heads/%s", source_url, source_branch):gsub("%s+.*\n$", "")
 
   local staging = options["staging"] or os.getenv("LPM_ADDON_STAGING_REPO") or ("git@github.com:" .. source_owner .. "/" .. target_project)
-  local staging_url, staging_owner, staging_project = retrieve_owner_project_branch(staging)
-  assert(staging_owner and target_project == staging_project, "invalid staging " .. staging)
+  local staging_url, staging_owner, staging_project, staging_branch, staging_local
+  if system.stat(staging) then
+    staging_local = staging
+    staging = retrieve_repository_origin(staging) .. ":master"
+    staging_url, staging_owner, staging_project, staging_branch = retrieve_owner_project_branch(staging)
+    assert(staging_owner and target_project == staging_project, "invalid staging " .. staging)
+  else
+    staging_url, staging_owner, staging_project, staging_branch = retrieve_owner_project_branch(staging)
+    assert(staging_owner and target_project == staging_project, "invalid staging " .. staging)
+  end
 
   local updating_manifest = json.decode(common.read(options["manifest"] or "manifest.json"))
   local updating_addons = addons or {}
@@ -55,13 +69,18 @@ local function create_addon_pr(options, addons)
   else
     updating_addons = updating_manifest.addons
   end
-  local path = SYSTMPDIR .. PATHSEP .. "pr"
-  common.rmrf(path)
-  run_command("git clone --depth=1 %s %s", staging, path)
-  local staging_branch = "origin/master"
-  if target ~= staging then
-    run_command("cd %s && git remote add upstream %s && git fetch --depth=1 upstream", path, target_url)
-    staging_branch = "upstream/master"
+  local path
+  if staging_local then
+    path = system.stat(staging_local).abs_path
+  else
+    path = SYSTMPDIR .. PATHSEP .. "pr"
+    common.rmrf(path)
+    run_command("git clone --depth=1 %s %s", staging, path)
+    staging_branch = "origin/master"
+    if target ~= staging then
+      run_command("cd %s && git remote add upstream %s && git fetch --depth=1 upstream", path, target_url)
+      staging_branch = "upstream/master"
+    end
   end
 
   local name = options.name or common.basename(system.stat(".").abs_path)
@@ -114,8 +133,8 @@ end
 -- options.staging is the repository we want to create our branches in; can be the same as options.target.
 if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
   ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag"})
-  local target = ARGS["target"] or common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":master"
-  local staging = ARGS["staging"] or target:gsub(":master$", "")
+  local target = ARGS["target"] or retrieve_repository_origin(".") .. ":master"
+  local staging = ARGS["staging"] or target
 
   local list = common.slice(ARGS, 4)
 
