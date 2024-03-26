@@ -112,12 +112,14 @@ local function create_addon_pr(options, addons)
     if not options["no-pr"] then
       local result = json.decode(run_command("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, handle))
       if result and #result == 0 then
-        assert(os.execute(string.format("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for %s.'", target_owner, target_project, staging_owner, handle, name, name)), "can't create pr")
+        run_command("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for %s.'", target_owner, target_project, staging_owner, handle, name, name)
       end
     end
   else
     log.warning("no change to manifest.json; not creating pr")
+    return false
   end
+  return true
 end
 
 
@@ -164,8 +166,9 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
         local _, pinned = addons[1].remote:match("^.*:(%s+)$")
         run_command("git clone --depth 1 %s -b %s %s", remote, branch, path)
         if commit ~= pinned then
-          create_addon_pr({ target = target, staging = staging, name = common.join(" and ", common.map(addons, function(a) return a.name or a.id end)), source = (remote .. ":" .. commit), manifest = path .. PATHSEP .. "manifest.json", ["no-pr"] = ARGS["no-pr"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end))
-          log.action(string.format("updated stub entry for %s to be pinned at %s based on branch %s", remote, commit, branch))
+          if create_addon_pr({ target = target, staging = staging, name = common.join(" and ", common.map(addons, function(a) return a.name or a.id end)), source = (remote .. ":" .. commit), manifest = path .. PATHSEP .. "manifest.json", ["no-pr"] = ARGS["no-pr"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end)) then
+            log.action(string.format("updated stub entry for %s to be pinned at %s based on branch %s", remote, commit, branch))
+          end
         else
           log.action(string.format("remote branch %s for %s matches current pinned commit %s", branch, remote, commit))
         end
