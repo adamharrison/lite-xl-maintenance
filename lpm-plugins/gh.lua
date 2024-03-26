@@ -88,7 +88,8 @@ local function create_addon_pr(options, addons)
   end
   common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }) .. "\n")
   if not os.execute("cd '" .. path .. "' && git diff --exit-code -s manifest.json") then
-    run_command("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.' && git push -f --set-upstream origin PR/update-manifest-%s", path, handle)
+    run_command("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.'", path)
+    run_command("cd %s && git push -f --set-upstream origin PR/update-manifest-%s", path, handle)
     if not options["no-pr"] then
       local result = json.decode(run_command("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, handle))
       if result and #result == 0 then
