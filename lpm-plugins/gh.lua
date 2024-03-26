@@ -28,7 +28,7 @@ local function create_addon_pr(options, addons)
   local target = options["target"] or "git@github.com:lite-xl/lite-xl-plugins.git:master"
   local target_url, target_branch = target:match("^(.*):(%w+)$")
   local target_owner, target_project = target:match("git@github.com:([%w-]+)/([%w-]+)%.?g?i?t?")
-  assert(target_url and target_branch and target_owner and target_project, "invalid target")
+  assert(target_url and target_branch and target_owner and target_project, "invalid target " .. target)
   local source = options["source"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":HEAD")
   local source_owner, source_project, source_branch = source:match("([%w-]+)/([%w-]+)%.?g?i?t?:([%w-]+)$")
   assert(source_branch, "can't find source branch")
@@ -76,7 +76,7 @@ local function create_addon_pr(options, addons)
     if v.tags then entry.tags = v.tags end
     if not target_map[v.id] then
       table.insert(target_manifest.addons, entry)
-    else
+    elseif options["ignore-version"] or (target_manifest.addons[target_map[v.id]].version ~= entry.version)
       target_manifest.addons[target_map[v.id]] = common.merge(target_manifest.addons[target_map[v.id]], entry)
     end
   end
@@ -104,7 +104,7 @@ end
 
 
 if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
-  ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag"})
+  ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag"})
   local target = ARGS["target"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":master")
   local staging = ARGS["staging"] or target:gsub(":master$", "")
 
@@ -136,7 +136,7 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
         local _, pinned = addons[1].remote:match("^.*:(%s+)$")
         run_command("git clone --depth 1 %s -b %s %s", remote, branch, path)
         if commit ~= pinned then
-          create_addon_pr({ target = target, staging = staging, name = common.join(" and ", common.map(addons, function(a) return a.name or a.id end)), source = (remote .. ":" .. commit), manifest = path .. PATHSEP .. "manifest.json", ["no-pr"] = ARGS["no-pr"] }, common.map(addons, function(e) return e.id end))
+          create_addon_pr({ target = target, staging = staging, name = common.join(" and ", common.map(addons, function(a) return a.name or a.id end)), source = (remote .. ":" .. commit), manifest = path .. PATHSEP .. "manifest.json", ["no-pr"] = ARGS["no-pr"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end))
           log.action(string.format("updated stub entry for %s to be pinned at %s based on branch %s", remote, commit, branch))
         else
           log.action(string.format("remote branch %s for %s matches current pinned commit %s", branch, remote, commit))
