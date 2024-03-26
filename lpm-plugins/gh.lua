@@ -102,10 +102,14 @@ if ARGS[2] == "gh" and ARGS[3] == "create-stubs-pr" then
   os.exit(0)
 end
 
+local function http_to_git_url(http_url)
+  return http_url and http_url:gsub("^https://github.com/", "git@github.com:")
+end
+
 
 if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
   ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag"})
-  local target = ARGS["target"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":master")
+  local target = ARGS["target"] or http_to_git_url(common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":master")
   local staging = ARGS["staging"] or target:gsub(":master$", "")
 
   local list = common.slice(ARGS, 4)
