@@ -24,21 +24,27 @@ function Repository.url(url, ...)
  return old_repository_url(url, ...)
 end
 
+local function retrieve_owner_project_branch(url)
+  return url:match("^(.*([%w-]+)/([%w-]+)%.?g?i?t?):?([%w-]*)$")
+end
+
+-- options.source is the repository:branch containing the plugin in question.
+-- options.target is repository:branch we create the PR in.
+-- options.staging is a fork of options.target, or exactly equal to options.target, minus the branch.
 local function create_addon_pr(options, addons)
   local target = options["target"] or "git@github.com:lite-xl/lite-xl-plugins.git:master"
-  local target_url, target_branch = target:match("^(.*):(%w+)$")
-  local target_owner, target_project = target:match("git@github.com:([%w-]+)/([%w-]+)%.?g?i?t?")
+  local target_url, target_owner, target_project, target_branch = retrieve_owner_project_branch(target)
   assert(target_url and target_branch and target_owner and target_project, "invalid target " .. target)
-  local source = options["source"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":HEAD")
-  local source_owner, source_project, source_branch = source:match("([%w-]+)/([%w-]+)%.?g?i?t?:([%w-]+)$")
-  assert(source_branch, "can't find source branch")
-  local source_commit = common.is_commit_hash(source_branch) and source_branch or run_command("git rev-parse %s", source_branch):gsub("\n$", "")
 
+  local source = options["source"] or (common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":HEAD")
+  local source_url, source_owner, source_project, source_branch = retrieve_owner_project_branch(source)
+  assert(source_branch, "can't find source branch from" .. source)
+  local source_commit = common.is_commit_hash(source_branch) and source_branch or run_command("git ls-remote %s refs/heads/%s", source_url, source_branch):gsub("%s+.*\n$", "")
 
   local staging = options["staging"] or os.getenv("LPM_ADDON_STAGING_REPO") or ("git@github.com:" .. source_owner .. "/" .. target_project)
+  local staging_url, staging_owner, staging_project = retrieve_owner_project_branch(staging)
+  assert(staging_owner and target_project == staging_project, "invalid staging " .. staging)
 
-  local staging_owner, staging_project = staging:match("git@github.com:([%w-]+)/([%w-]+)%.?g?i?t?$")
-  assert(staging_owner and target_project == staging_project, "invalid staging")
   local updating_manifest = json.decode(common.read(options["manifest"] or "manifest.json"))
   local updating_addons = addons or {}
   if #updating_addons > 0 then
@@ -51,10 +57,10 @@ local function create_addon_pr(options, addons)
   end
   local path = SYSTMPDIR .. PATHSEP .. "pr"
   common.rmrf(path)
-  assert(os.execute(string.format("git clone --depth=1 %s %s", staging, path)), "can't clone repository " .. staging .. " to " .. path)
+  run_command("git clone --depth=1 %s %s", staging, path)
   local staging_branch = "origin/master"
   if target ~= staging then
-    assert(os.execute(string.format("cd %s && git remote add upstream %s && git fetch --depth=1 upstream", path, target_url)), "can't add upstream to repository")
+    run_command("cd %s && git remote add upstream %s && git fetch --depth=1 upstream", path, target_url)
     staging_branch = "upstream/master"
   end
 
@@ -102,14 +108,10 @@ if ARGS[2] == "gh" and ARGS[3] == "create-stubs-pr" then
   os.exit(0)
 end
 
-local function http_to_git_url(http_url)
-  return http_url and http_url:gsub("^https://github.com/", "git@github.com:")
-end
-
 
 if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
   ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag"})
-  local target = ARGS["target"] or http_to_git_url(common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":master")
+  local target = ARGS["target"] or common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":master"
   local staging = ARGS["staging"] or target:gsub(":master$", "")
 
   local list = common.slice(ARGS, 4)
