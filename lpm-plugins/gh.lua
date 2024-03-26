@@ -76,7 +76,7 @@ local function create_addon_pr(options, addons)
     if v.tags then entry.tags = v.tags end
     if not target_map[v.id] then
       table.insert(target_manifest.addons, entry)
-    elseif options["ignore-version"] or (target_manifest.addons[target_map[v.id]].version ~= entry.version)
+    elseif options["ignore-version"] or (target_manifest.addons[target_map[v.id]].version ~= entry.version) then
       target_manifest.addons[target_map[v.id]] = common.merge(target_manifest.addons[target_map[v.id]], entry)
     end
   end
