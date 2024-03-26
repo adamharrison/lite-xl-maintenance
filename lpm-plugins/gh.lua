@@ -7,7 +7,7 @@ local function run_command(cmd, ...)
   local process = io.popen(cmd)
   local result = process:read("*all")
   local success, signal, code = process:close()
-  if not success then error(string.format("command '%s' %s with error code %d", cmd, signal, code)) end
+  if not success then error(string.format("command '%s' %s with error code %d: %s", cmd, signal, code, result)) end
   return result
 end
 
@@ -66,7 +66,7 @@ local function create_addon_pr(options, addons)
 
   local name = options.name or common.basename(system.stat(".").abs_path)
   local handle = common.handleize(name)
-  assert(os.execute(string.format("cd %s && git checkout -B 'PR/update-manifest-%s' && git reset %s --hard", path, handle, staging_branch)), "can't create branch")
+  run_command("cd %s && git checkout -B 'PR/update-manifest-%s' && git reset %s --hard", path, handle, staging_branch)
   local target_manifest = json.decode(common.read(path .. PATHSEP .. "manifest.json"))
   local target_map = {}
   for i,v in ipairs(target_manifest.addons) do target_map[v.id] = i end
@@ -88,7 +88,7 @@ local function create_addon_pr(options, addons)
   end
   common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }) .. "\n")
   if not os.execute("cd '" .. path .. "' && git diff --exit-code -s manifest.json") then
-    assert(os.execute(string.format("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.' && git push -f --set-upstream origin PR/update-manifest-%s", path, handle)), "can't update manifest, and push PR")
+    run_command("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.' && git push -f --set-upstream origin PR/update-manifest-%s", path, handle)
     if not options["no-pr"] then
       local result = json.decode(run_command("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, handle))
       if result and #result == 0 then
@@ -109,6 +109,8 @@ if ARGS[2] == "gh" and ARGS[3] == "create-stubs-pr" then
 end
 
 
+-- options.target is the repository we want create our PRs in.
+-- options.staging is the repository we want to create our branches in; can be the same as options.target.
 if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
   ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag"})
   local target = ARGS["target"] or common.read(".git/config"):match("%[remote \"origin\"%]%s+url%s*=%s*(%S+)") .. ":master"
