@@ -36,16 +36,16 @@ end
 -- options.source is the repository:branch containing the plugin in question.
 -- options.target is repository:branch we create the PR in.
 -- options.staging is a fork of options.target, or exactly equal to options.target
--- options.staging_local is a
 local function create_addon_pr(options, addons)
-  local target = options["target"] or "git@github.com:lite-xl/lite-xl-plugins.git:master"
+  local target = options["target"]
   local target_url, target_owner, target_project, target_branch = retrieve_owner_project_branch(target)
   assert(target_url and target_branch and target_owner and target_project, "invalid target " .. target)
 
-  local source = options["source"] or (retrieve_repository_origin(".") .. ":HEAD")
+  local source = options["source"]
   local source_url, source_owner, source_project, source_branch = retrieve_owner_project_branch(source)
   assert(source_branch, "can't find source branch from" .. source)
   local source_commit = common.is_commit_hash(source_branch) and source_branch or run_command("git ls-remote %s refs/heads/%s", source_url, source_branch):gsub("%s+.*\n$", "")
+  local source_manifest = json.decode(common.get(string.format("https://raw.githubusercontent.com/%s/%s/%s/manifest.json", source_owner, source_project, source_commit)))
 
   local staging = options["staging"] or os.getenv("LPM_ADDON_STAGING_REPO") or ("git@github.com:" .. source_owner .. "/" .. target_project)
   local staging_url, staging_owner, staging_project, staging_branch, staging_local
@@ -59,15 +59,14 @@ local function create_addon_pr(options, addons)
     assert(staging_owner and target_project == staging_project, "invalid staging " .. staging)
   end
 
-  local updating_manifest = json.decode(common.read(options["manifest"] or "manifest.json"))
   local updating_addons = addons or {}
   if #updating_addons > 0 then
     updating_addons = common.map(updating_addons, function(addon)
-      addon = assert(common.grep(updating_manifest.addons, function(a) return a.id == addon end)[1], "can't find addon " .. addon)
+      addon = assert(common.grep(source_manifest.addons, function(a) return a.id == addon end)[1], "can't find addon " .. addon)
       return addon
     end)
   else
-    updating_addons = updating_manifest.addons
+    updating_addons = source_manifest.addons
   end
   local path
   if staging_local then
@@ -75,15 +74,14 @@ local function create_addon_pr(options, addons)
   else
     path = SYSTMPDIR .. PATHSEP .. "pr"
     common.rmrf(path)
-    run_command("git clone --depth=1 %s %s", staging, path)
-    staging_branch = "origin/master"
+    run_command("git clone --depth=1 %s %s", staging:gsub(":%w+$", ""), path)
     if target ~= staging then
       run_command("cd %s && git remote add upstream %s && git fetch --depth=1 upstream", path, target_url)
-      staging_branch = "upstream/master"
+      staging_branch = "upstream/" .. (staging_branch ~= "" and staging_branch or "master")
     end
   end
 
-  local name = options.name or common.basename(system.stat(".").abs_path)
+  local name = options.name or source_project
   local handle = common.handleize(name)
   run_command("cd %s && git checkout -B 'PR/update-manifest-%s' && git reset %s --hard", path, handle, staging_branch)
   local target_manifest = json.decode(common.read(path .. PATHSEP .. "manifest.json"))
@@ -99,6 +97,7 @@ local function create_addon_pr(options, addons)
     if v.name then entry.name = v.name end
     if v.description then entry.description = v.description end
     if v.tags then entry.tags = v.tags end
+    if not common.is_commit_hash(source_branch) and source_branch ~= "latest" then entry.extra = { follow_branch = source_branch } end
     if not target_map[v.id] then
       table.insert(target_manifest.addons, entry)
     elseif options["ignore-version"] or (target_manifest.addons[target_map[v.id]].version ~= entry.version) then
@@ -108,7 +107,7 @@ local function create_addon_pr(options, addons)
   common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }) .. "\n")
   if not os.execute("cd '" .. path .. "' && git diff --exit-code -s manifest.json") then
     run_command("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.'", path)
-    run_command("cd %s && git push -f --set-upstream origin PR/update-manifest-%s", path, handle)
+    run_command("cd %s && git push -f origin PR/update-manifest-%s", path, handle)
     if not options["no-pr"] then
       local result = json.decode(run_command("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, handle))
       if result and #result == 0 then
@@ -126,6 +125,8 @@ end
 
 if ARGS[2] == "gh" and ARGS[3] == "create-stubs-pr" then
   ARGS = common.args(ARGS, { target = "string", source = "string", staging = "string", name = "string", ["no-pr"] = "flag" })
+  if not ARGS.target then ARGS.target = retrieve_repository_origin(".") .. ":master" end
+  assert(ARGS.source, "requires a --source")
   create_addon_pr(ARGS, common.slice(ARGS, 4))
   os.exit(0)
 end
@@ -161,12 +162,9 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
       local commit_line = common.grep(commits, function(c) return c:find(branch .. "$") end)[1]
       if commit_line then
         local commit = commit_line:match("^(%S+)")
-        local path = SYSTMPDIR .. PATHSEP .. "commit-" .. system.hash(remote .. branch)
-        common.rmrf(path)
         local _, pinned = addons[1].remote:match("^.*:(%s+)$")
-        run_command("git clone --depth 1 %s -b %s %s", remote, branch, path)
         if commit ~= pinned then
-          if create_addon_pr({ target = target, staging = staging, name = common.join(" and ", common.map(addons, function(a) return a.name or a.id end)), source = (remote .. ":" .. commit), manifest = path .. PATHSEP .. "manifest.json", ["no-pr"] = ARGS["no-pr"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end)) then
+          if create_addon_pr({ target = target, staging = staging, name = common.join(" and ", common.map(addons, function(a) return a.name or a.id end)), source = (remote .. ":" .. commit), ["no-pr"] = ARGS["no-pr"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end)) then
             log.action(string.format("updated stub entry for %s to be pinned at %s based on branch %s", remote, commit, branch))
           end
         else
