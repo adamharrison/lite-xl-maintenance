@@ -47,7 +47,7 @@ local function create_addon_pr(options, addons)
   local source_commit = common.is_commit_hash(source_branch) and source_branch or run_command("git ls-remote %s refs/heads/%s", source_url, source_branch):gsub("%s+.*\n$", "")
   local source_manifest = json.decode(common.get(string.format("https://raw.githubusercontent.com/%s/%s/%s/manifest.json", source_owner, source_project, source_commit)))
 
-  local staging = options["staging"] or os.getenv("LPM_ADDON_STAGING_REPO") or ("git@github.com:" .. source_owner .. "/" .. target_project)
+  local staging = options["staging"]
   local staging_url, staging_owner, staging_project, staging_branch, staging_local
   if system.stat(staging) then
     staging_local = staging
@@ -81,7 +81,7 @@ local function create_addon_pr(options, addons)
     end
   end
 
-  local name = options.name or source_project
+  local name = options.name or (source_owner .. "/" .. source_project)
   local handle = common.handleize(name)
   run_command("cd %s && git checkout -B 'PR/update-manifest-%s' && git reset %s --hard", path, handle, staging_branch)
   local target_manifest = json.decode(common.read(path .. PATHSEP .. "manifest.json"))
@@ -164,7 +164,7 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
         local commit = commit_line:match("^(%S+)")
         local _, pinned = addons[1].remote:match("^.*:(%s+)$")
         if commit ~= pinned then
-          if create_addon_pr({ target = target, staging = staging, name = common.join(" and ", common.map(addons, function(a) return a.name or a.id end)), source = (remote .. ":" .. commit), ["no-pr"] = ARGS["no-pr"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end)) then
+          if create_addon_pr({ target = target, staging = staging, source = (remote .. ":" .. commit), ["no-pr"] = ARGS["no-pr"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end)) then
             log.action(string.format("updated stub entry for %s to be pinned at %s based on branch %s", remote, commit, branch))
           end
         else
