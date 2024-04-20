@@ -111,7 +111,7 @@ local function create_addon_pr(options, addons)
     if not options["no-pr"] then
       local result = json.decode(run_command("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, handle))
       if result and #result == 0 then
-        run_command("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for %s.'", target_owner, target_project, staging_owner, handle, name, name)
+        run_command("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for `%s`.'", target_owner, target_project, staging_owner, handle, name, name)
       end
     end
   else
@@ -134,8 +134,9 @@ end
 
 -- options.target is the repository we want create our PRs in.
 -- options.staging is the repository we want to create our branches in; can be the same as options.target.
+-- options.remotes will automatically pull in all entries for a remote, and mark them as stubs.
 if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
-  ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag"})
+  ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag" })
   local target = ARGS["target"] or retrieve_repository_origin(".") .. ":master"
   local staging = ARGS["staging"] or target
 
@@ -143,10 +144,25 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
 
   local manifest = json.decode(common.read("manifest.json"))
   local remotes = {}
+  local addons = manifest.addons
+  for i, remote in ipairs(AUTO_PULL_REMOTES and manifest.remotes or {}) do
+    local repo = Repository.url(remote):fetch()
+    local url, branch = remote:match("^(.*):(.*)$")
+    local manifest = repo:parse_manifest()
+    addons = common.concat(addons, common.map(manifest.addons, function(v)
+      local hash = {
+        remote = url:gsub("%.git$", "") .. ":000000000000000000000000000000000000000",
+        id = v.id,
+      }
+      if branch ~= "latest" then hash.extra = { follow_branch = branch } end
+      return hash
+    end))
+  end
   for i,v in ipairs(manifest.addons) do
     if v.remote then
       if #list == 0 or #common.grep(list, function(e) return e == v.id end) > 0 then
         local repo = v.remote:match("^(.*):[a-f0-9]+$")
+        repo = repo:gsub("%.git$", "")
         local following_branch = v.extra and v.extra.follow_branch or "latest"
         if not remotes[repo] then remotes[repo] = {} end
         if not remotes[repo][following_branch] then remotes[repo][following_branch] = {} end
@@ -177,3 +193,4 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
   end
   os.exit(0)
 end
+
