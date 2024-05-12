@@ -255,8 +255,8 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
     if contents ~= common.read("manifest.json") then
       local email = run_command("git config user.email")
       if not email:find("%S") then
-        run_command("git config user.email '<>'")
-        run_command("git config user.name 'LPM GH Plugin'")
+        run_command('git config --global user.email "<>"')
+        run_command('git config --global user.name "LPM GH Plugin"')
       end
       common.write("manifest.json", json.encode(manifest, { pretty = true }) .. "\n")
       run_command("git add manifest.json && git commit -m 'Updated manifest.json.' && git push")
