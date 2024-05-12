@@ -254,6 +254,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
     local contents = json.encode(manifest, { pretty = true }) .. "\n"
     if contents ~= common.read("manifest.json") then
       local email = run_command("git config user.email")
+      print("EMAIL", email)
       if email == "" then
         run_command("git config user.email '<>'")
         run_command("git config user.name 'LPM GH Plugin'")
