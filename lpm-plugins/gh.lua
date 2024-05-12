@@ -274,7 +274,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
   if release and changelog and ARGS.discord then
     log.action(string.format("Publishing release to discord..."))
     local url = "https://github.com/adamharrison/lite-xl-terminal/releases/tag/v" .. version
-    common.write("/tmp/discord", json.encode({ content = "## " .. id .. " v" .. version .. " has been released!\n\n\n### Changes in " ..  version .. ":\n" .. changelog }))
+    common.write("/tmp/discord", json.encode({ content = "## " .. (addon.name or addon.id) .. " v" .. version .. " has been released!\n\n\n### Changes in " ..  version .. ":\n" .. changelog }))
     run_command('curl -H "Content-Type:application/json" ' .. ARGS.discord ..' -X POST -d "$(</tmp/discord)"')
   end
   log.action(string.format("Done."))
