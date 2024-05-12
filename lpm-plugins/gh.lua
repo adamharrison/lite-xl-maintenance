@@ -217,7 +217,6 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
   ARGS = common.args(ARGS, { discord = "string", notes = "string", addon = "string" })
   local version, release, manifest, addon = pull_version(ARGS.addon)
   local files = common.slice(ARGS, 4)
-  local file_list = common.join(", ", files)
 
   local changelog
   if ARGS.notes or (release and system.stat("CHAGNELOG.md")) then
@@ -238,7 +237,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
   end
 
   if #files > 0 and release then
-    log.action(string.format("Recomputing checksums for %s...", file_list))
+    log.action(string.format("Recomputing checksums for %s...", common.join(", ", files)))
     if not addon.files then error("can't find files entry for manifest") end
     local file_hash = {}
     for i, path in ipairs(files) do file_hash[common.basename(path)] = path end
@@ -261,15 +260,15 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
 
   log.action(string.format("Creating continuous release..."))
   run_command("git tag -f continuous && git push -f origin refs/tags/continuous")
-  run_command("gh release delete -y continuous || true; gh release create -p -t 'Continuous Release' continuous -F /tmp/NOTES.md %s", file_list)
+  run_command("gh release delete -y continuous || true; gh release create -p -t 'Continuous Release' continuous -F /tmp/NOTES.md %s", common.join(" ", files))
   if release then
     log.action(string.format("Creating versioned release..."))
     run_command("git tag -f v" .. version)
     run_command("git tag -f latest")
     run_command("git branch -f latest HEAD")
     run_command("git push -f origin refs/tags/v" .. version .. " refs/heads/latest refs/tags/latest")
-    run_command("gh release delete -y v%s || true; gh release create -t v%s v%s -F /tmp/NOTES.md %s", version, version, version, file_list)
-    run_command("gh release delete -y latest || true; gh release create -t latest latest -F /tmp/NOTES.md %s", file_list)
+    run_command("gh release delete -y v%s || true; gh release create -t v%s v%s -F /tmp/NOTES.md %s", version, version, version, common.join(" ", files))
+    run_command("gh release delete -y latest || true; gh release create -t latest latest -F /tmp/NOTES.md %s", common.join(" ", files))
   end
   if release and changelog and ARGS.discord then
     log.action(string.format("Publishing release to discord..."))
