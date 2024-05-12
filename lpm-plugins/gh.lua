@@ -237,7 +237,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
   end
 
   if #files > 0 and release then
-    log.action(string.format("Recomputing checksums for %s...", common.join(", ", files)))
+    log.action(string.format("Recomputing checksums for %s, and bumping manifest entries...", common.join(", ", files)))
     if not addon.files then error("can't find files entry for manifest") end
     local file_hash = {}
     for i, path in ipairs(files) do file_hash[common.basename(path)] = path end
@@ -246,6 +246,8 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
         local name = common.basename(v.url)
         if file_hash[name] then
           v.checksum = system.hash(file_hash[name], "file")
+          if not v.url:find("releases/download/v[%d%.]+") then error("can't find release url for " .. name) end
+          v.url = v.url:gsub("releases/download/v[%d%.]+", "releases/download/v" .. version)
         else
           log.warning("Didn't supply path to file " .. name .. "; ensure that this is intentional.")
         end
