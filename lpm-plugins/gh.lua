@@ -225,7 +225,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
       changelog = ARGS.notes
     else
       changelog = common.read("CHANGELOG.md")
-      local vs, ve = changelog:find("^##*%s*.*\n" .. version)
+      local vs, ve = changelog:find("^##*%s*" .. version .. "%s*\n")
       if not vs then error("can't find CHANGELOG entry for " .. version) end
       local ns, ne = changelog:find("\n#", ve + 1)
       changelog = changelog:sub(ve + 1, ns and (ns - 1) or #changelog)
