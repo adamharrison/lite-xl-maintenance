@@ -258,7 +258,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
         run_command('git config --global user.name "LPM GH Plugin"')
       end
       common.write("manifest.json", json.encode(manifest, { pretty = true }) .. "\n")
-      run_command("git add manifest.json && git commit -m 'Updated manifest.json.' && git push")
+      run_command("git add manifest.json && git commit -m 'Updated manifest.json.' && git push -f")
     end
   end
 
