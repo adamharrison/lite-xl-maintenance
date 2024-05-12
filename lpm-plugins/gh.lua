@@ -279,7 +279,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
     if not os.getenv("GITHUB_REPOSITORY") then error("can't find GITHUB_REPOSITORY defined") end
     local url = "https://github.com/" .. os.getenv("GITHUB_REPOSITORY") .. "/releases/tag/v" .. version
     common.write("/tmp/discord", json.encode({ content = "## " .. (addon.name or addon.id) .. " v" .. version .. " has been released!\n\n\n### Changes in " ..  version .. ":\n" .. changelog }))
-    print(run_command('cat /tmp/discord | curl -H "Content-Type:application/json" "' .. os.getenv("LPM_DISCORD_WEBHOOK") ..'" -X POST -d "$(</dev/stdin)"'))
+    print(run_command('curl -H "Content-Type:application/json" "' .. os.getenv("LPM_DISCORD_WEBHOOK") ..'" -X POST -d @/tmp/discord'))
   end
   log.action(string.format("Done."))
   os.exit(0)
