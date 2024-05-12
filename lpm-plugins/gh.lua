@@ -219,7 +219,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
   local files = common.slice(ARGS, 4)
 
   local changelog
-  if ARGS.notes or (release and system.stat("CHAGNELOG.md")) then
+  if ARGS.notes or (release and system.stat("CHANGELOG.md")) then
     log.action(string.format("Writing release notes..."))
     if ARGS.notes then
       changelog = ARGS.notes
