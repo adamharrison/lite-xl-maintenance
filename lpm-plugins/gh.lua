@@ -194,3 +194,89 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
   os.exit(0)
 end
 
+local function pull_version(id)
+  local manifest = json.decode(common.read("manifest.json"))
+  local addon = manifest.addons and (common.grep(manifest.addons, function(a) return (#manifest.addons == 1 and not id) or a.id == id end)[1])
+  if not addon then error("can't find addon to pull version from") end
+  local result = run_command('git describe --tags --match "v*"'):gsub("\n", "")
+  local version, suffix = result:match("^v([%d%.]+)%-?(.*)$")
+  if suffix and addon.version ~= version then return addon.version, true, manifest, addon end
+  return result, false, manifest, addon
+end
+
+-- Must be performed at the repository root.
+if ARGS[2] == "gh" and ARGS[3] == "version" then
+  local version, release, manifest = pull_version(ARGS[4])
+  print(version)
+  os.exit(0)
+end
+
+-- Must be performed at the repository root.
+-- lpm gh release Linux/*.so MacOS/*.so Windows/*.dll
+if ARGS[2] == "gh" and ARGS[3] == "release" then
+  ARGS = common.args(ARGS, { discord = "string", notes = "string" })
+  local version, release, manifest, addon = pull_version(ARGS[4])
+  local files = common.slice(ARGS, 5)
+  local file_list = common.join(", ", files)
+
+  local changelog
+  if ARGS.notes or (release and system.stat("CHAGNELOG.md")) then
+    log.action(string.format("Writing release notes..."))
+    if ARGS.notes then
+      changelog = ARGS.notes
+    else
+      changelog = common.read("CHANGELOG.md")
+      local vs, ve = changelog:find("^##*%s*" .. version)
+      if not vs then error("can't find CHANGELOG entry for " .. version) end
+      local ns, ne = changelog:find("^##*", ve + 1)
+      changelog = changelog:sub(vs, ns and (ns - 1) or #changelog)
+    end
+    common.write("/tmp/NOTES.md", changelog)
+  else
+    log.action(string.format("Publishing no release notes..."))
+    common.write("/tmp/NOTES.md", "No notes exist for this release.")
+  end
+
+  if #files > 0 and release then
+    log.action(string.format("Recomputing checksums for %s...", file_list))
+    if not addon.files then error("can't find files entry for manifest") end
+    local file_hash = {}
+    for i, path in ipairs(files) do file_hash[common.basename(path)] = path end
+    for i,v in ipairs(addon.files) do
+      if v.checksum and v.checksum ~= "SKIP" then
+        local name = common.basename(v.url)
+        if file_hash[name] then
+          v.checksum = system.hash(file_hash[name], "file")
+        else
+          log.warning("Didn't supply path to file " .. name .. "; ensure that this is intentional.")
+        end
+      end
+    end
+    local contents = json.encode(manifest, { pretty = true }) .. "\n"
+    if contents ~= common.read("manifest.json") then
+      common.write("manifest.json", json.encode(manifest, { pretty = true }) .. "\n")
+      run_command("git add manifest.json && git commit -m 'Updated manifest.json.' && git push")
+    end
+  end
+
+  log.action(string.format("Creating continuous release..."))
+  run_command("git tag -f continuous && git push -f origin refs/tags/continuous")
+  run_command("gh release delete -y continuous || true; gh release create -p -t 'Continuous Release' continuous -F /tmp/NOTES.md %s", file_list)
+  if release then
+    log.action(string.format("Creating versioned release..."))
+    run_command("git tag -f v" .. version)
+    run_command("git tag -f latest")
+    run_command("git branch -f latest HEAD")
+    run_command("git push -f origin refs/tags/v" .. version .. " refs/heads/latest refs/tags/latest")
+    run_command("gh release delete -y v%s || true; gh release create -t v%s v%s -F /tmp/NOTES.md %s", version, version, version, file_list)
+    run_command("gh release delete -y latest || true; gh release create -t latest latest -F /tmp/NOTES.md %s", file_list)
+  end
+  if release and changelog and ARGS.discord then
+    log.action(string.format("Publishing release to discord..."))
+    local url = "https://github.com/adamharrison/lite-xl-terminal/releases/tag/v" .. version
+    common.write("/tmp/discord", json.encode({ content = "## " .. id .. " v" .. version .. " has been released!\n\n\n### Changes in " ..  version .. ":\n" .. changelog }))
+    run_command('curl -H "Content-Type:application/json" ' .. ARGS.discord ..' -X POST -d "$(</tmp/discord)"')
+  end
+  log.action(string.format("Done."))
+  os.exit(0)
+end
