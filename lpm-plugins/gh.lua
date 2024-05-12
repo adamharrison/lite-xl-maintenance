@@ -214,9 +214,9 @@ end
 -- Must be performed at the repository root.
 -- lpm gh release Linux/*.so MacOS/*.so Windows/*.dll
 if ARGS[2] == "gh" and ARGS[3] == "release" then
-  ARGS = common.args(ARGS, { discord = "string", notes = "string" })
-  local version, release, manifest, addon = pull_version(ARGS[4])
-  local files = common.slice(ARGS, 5)
+  ARGS = common.args(ARGS, { discord = "string", notes = "string", addon = "string" })
+  local version, release, manifest, addon = pull_version(ARGS.addon)
+  local files = common.slice(ARGS, 4)
   local file_list = common.join(", ", files)
 
   local changelog
