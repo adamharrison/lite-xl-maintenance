@@ -286,3 +286,50 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
   log.action(string.format("Done."))
   os.exit(0)
 end
+
+if ARGS[2] == "gh" and ARGS[3] == "run" then
+  ARGS = common.args(ARGS, { reinstall = "flag" })
+  local newArgs = { ARGS[1], "run", "system" }
+  local repos = {}
+  for i = 4, #ARGS do
+    local url = ARGS[i]
+    local s, e, owner, repo, pull_id = url:find("https://github.com/([^/]+)/([^/]+)/pull/(%d+)")
+    if s then
+      local pr = json.decode(run_command("gh pr list -R %s/%s -S %d --json headRepository,headRefName,headRepositoryOwner", owner, repo, pull_id))[1]
+      table.insert(repos, { owner = pr.headRepositoryOwner.login, project = pr.headRepository.name, ref = pr.headRefName })
+    else
+      local s, e, owner, repo, branch = url:find("https://github.com/([^/]+)/(lite%-xl%w*):(.+)")
+      if s then
+        table.insert(repos, { owner = owner, project = repo, ref = branch })
+      else
+        table.insert(newArgs, url)
+      end
+    end
+  end
+
+  assert(#repos > 0, "can't find any repositories to meld")
+  -- first repository is a base
+  local hash = system.hash(common.join(",", common.map(repos, function(r) return r.owner .. r.project .. r.ref end)))
+  local target = CACHEDIR .. PATHSEP .. "gh-melds" .. PATHSEP .. hash
+  if not system.stat(target) then
+    common.mkdirp(common.dirname(target))
+    local tmp = TMPDIR .. PATHSEP .. "gh-melds" .. PATHSEP .. hash
+    common.mkdirp(common.dirname(tmp))
+    run_command("git clone https://github.com/%s/%s %s --branch %s", repos[1].owner, repos[1].project, tmp, repos[1].ref)
+    local added_upstreams = {}
+    for i = 2, #repos do
+      local upstream = repos[i].owner .. "_" .. repos[i].project
+      if not added_upstreams[upstream] then
+        run_command("git -C %s remote add %s https://github.com/%s/%s", tmp, upstream, repos[i].owner, repos[i].project)
+        run_command("git -C %s fetch %s", tmp, upstream)
+      end
+      run_command("git -C %s merge %s/%s", tmp, upstream, repos[i].ref)
+      run_command("build-lite %s", tmp)
+    end
+    run_command("sh -c 'cd %s && build-lite'", tmp)
+    common.rename(tmp, target)
+  end
+  BINARY = target .. PATHSEP .. "lite-xl"
+  DATADIR = target .. PATHSEP .. "data"
+  ARGS = newArgs
+end
