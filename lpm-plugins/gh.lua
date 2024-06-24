@@ -220,7 +220,7 @@ end
 if ARGS[2] == "gh" and ARGS[3] == "release" then
   ARGS = common.args(ARGS, { notes = "string", addon = "string" })
   local version, release, manifest, addon = pull_version(ARGS.addon)
-  log.action("Performing release action for %s (%s)...", version, release and "versioned release" or "continuous release")
+  log.action(string.format("Performing release action for %s (%s)...", version, release and "versioned release" or "continuous release"))
   local files = common.slice(ARGS, 4)
 
   local changelog
@@ -242,13 +242,14 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
   end
 
   if release then
-    log.action(string.format("Recomputing checksums for %s, and bumping manifest entries...", common.join(", ", files)))
+    log.action(string.format("Recomputing checksums, bumping manifest entries, and plugin version..."))
     addon.version = version
     local file_hash = {}
     for i, path in ipairs(files) do file_hash[common.basename(path)] = path end
     for i,v in ipairs(addon.files) do
       if v.checksum and v.checksum ~= "SKIP" then
         local name = common.basename(v.url)
+        log.action(string.format("Recomputing checksum for %s...", name))
         if file_hash[name] then
           v.checksum = system.hash(file_hash[name], "file")
           if not v.url:find("releases/download/v[%d%.]+") then error("can't find release url for " .. name) end
