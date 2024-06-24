@@ -220,6 +220,7 @@ end
 if ARGS[2] == "gh" and ARGS[3] == "release" then
   ARGS = common.args(ARGS, { notes = "string", addon = "string" })
   local version, release, manifest, addon = pull_version(ARGS.addon)
+  log.action("Performing release action for %s (%s)...", version, release and "versioned release" or "continuous release")
   local files = common.slice(ARGS, 4)
 
   local changelog
