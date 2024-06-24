@@ -240,9 +240,9 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
     common.write("/tmp/NOTES.md", "No notes exist for this release.")
   end
 
-  if #files > 0 and release then
+  if release then
     log.action(string.format("Recomputing checksums for %s, and bumping manifest entries...", common.join(", ", files)))
-    if not addon.files then error("can't find files entry for manifest") end
+    addon.version = version
     local file_hash = {}
     for i, path in ipairs(files) do file_hash[common.basename(path)] = path end
     for i,v in ipairs(addon.files) do
