@@ -200,14 +200,18 @@ local function pull_version(id)
   if not addon then error("can't find addon to pull version from") end
   local result = run_command('git describe --tags --match "v*"'):gsub("\n", "")
   local version, suffix = result:match("^v([%d%.]+)%-?(.*)$")
-  if suffix and addon.version ~= version then return addon.version, true, manifest, addon end
-  return result, false, manifest, addon
+  if suffix and addon.version ~= version then return version, true, manifest, addon end
+  return version, false, manifest, addon
 end
 
 -- Must be performed at the repository root.
 if ARGS[2] == "gh" and ARGS[3] == "version" then
   local version, release, manifest = pull_version(ARGS[4])
-  print(version)
+  if VERBOSE then
+    print(version, release)
+  else 
+    print(version)
+  end
   os.exit(0)
 end
 
