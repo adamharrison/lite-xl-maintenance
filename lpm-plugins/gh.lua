@@ -74,7 +74,7 @@ local function create_addon_pr(options, addons)
   else
     path = SYSTMPDIR .. PATHSEP .. "pr"
     common.rmrf(path)
-    run_command("git clone --depth=1 %s %s", staging:gsub(":%w+$", ""), path)
+    run_command("git clone " .. (options.verbose and "" or "-q") .. " --depth=1 %s %s", staging:gsub(":%w+$", ""), path)
     if target ~= staging then
       run_command("cd %s && git remote add upstream %s && git fetch --depth=1 upstream", path, target_url)
       staging_branch = "upstream/" .. (staging_branch ~= "" and staging_branch or "master")
@@ -83,8 +83,11 @@ local function create_addon_pr(options, addons)
 
   local name = options.name or (source_owner .. "/" .. source_project)
   local handle = common.handleize(name)
-  run_command("cd %s && git checkout -B 'PR/update-manifest-%s' && git reset %s --hard", path, handle, staging_branch)
-  local target_manifest = json.decode(common.read(path .. PATHSEP .. "manifest.json"))
+  if not options["no-commit"] then
+    run_command("cd %s && git checkout -B 'PR/update-manifest-%s' && git reset %s --hard", path, handle, staging_branch)
+  end
+  local target_manifest_contents = common.read(path .. PATHSEP .. "manifest.json")
+  local target_manifest = json.decode(target_manifest_contents)
   local target_map = {}
   for i,v in ipairs(target_manifest.addons) do target_map[v.id] = i end
   for i,v in ipairs(updating_addons) do
@@ -103,22 +106,32 @@ local function create_addon_pr(options, addons)
     elseif options["ignore-version"] or (target_manifest.addons[target_map[v.id]].version ~= entry.version) then
       target_manifest.addons[target_map[v.id]] = common.merge(target_manifest.addons[target_map[v.id]], entry)
     end
-  end
-  common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }) .. "\n")
-  if not os.execute("cd '" .. path .. "' && git diff --exit-code -s manifest.json") then
-    run_command("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.'", path)
-    run_command("cd %s && git push -f origin PR/update-manifest-%s", path, handle)
-    if not options["no-pr"] then
-      local result = json.decode(run_command("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, handle))
-      if result and #result == 0 then
-        run_command("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for `%s`.'", target_owner, target_project, staging_owner, handle, name, name)
+  end  
+  if not options["no-commit"] then
+    common.write(path .. PATHSEP .. "manifest.json", json.encode(target_manifest, { pretty = true }) .. "\n")
+    if not os.execute("cd '" .. path .. "' && git diff --exit-code -s manifest.json") then
+      run_command("cd %s && git add manifest.json && git commit -m 'Updated manifest.json.'", path)
+      run_command("cd %s && git push -f origin PR/update-manifest-%s", path, handle)
+      if not options["no-pr"] then
+        local result = json.decode(run_command("gh pr list -R %s/%s -H PR/update-manifest-%s --json id", target_owner, target_project, handle))
+        if result and #result == 0 then
+          run_command("gh pr create -R %s/%s -H %s:PR/update-manifest-%s -t 'Update %s Version' -b 'Bumping versions of stubs for `%s`.'", target_owner, target_project, staging_owner, handle, name, name)
+        end
       end
+    else
+      log.warning("no change to manifest.json; not creating pr")
+      return false
     end
+    return true
   else
-    log.warning("no change to manifest.json; not creating pr")
-    return false
+    local new_manifest = json.encode(target_manifest, { pretty = true }) .. "\n"
+    if new_manifest ~= target_manifest_contents then
+      common.write(path .. PATHSEP .. "manifest.json", new_manifest)
+      return true
+    else
+      return false
+    end
   end
-  return true
 end
 
 
@@ -132,13 +145,16 @@ if ARGS[2] == "gh" and ARGS[3] == "create-stubs-pr" then
 end
 
 
--- options.target is the repository we want create our PRs in.
+-- options.target is the repository we want create our PRs in. 
 -- options.staging is the repository we want to create our branches in; can be the same as options.target.
 -- options.remotes will automatically pull in all entries for a remote, and mark them as stubs.
+-- options.default-branch changes the default branch we look to check for an update. This can specifically be used to generate `x.0` respoitories for new releases, by updating the primary
+-- plugin repo to use new branches under the `x.0` scheme ift hey eixst with `lpm gh check-stubs-update-pr --no-pr --branch 3.0 --no-commit --staging .`
 if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
-  ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag" })
+  ARGS = common.args(ARGS, { target = "string", staging = "string", name = "string", ["no-pr"] = "flag", ["ignore-version"] = "flag", ["no-commit"] = "flag", ["default-branch"] = "string", branch = "string" }) 
   local target = ARGS["target"] or retrieve_repository_origin(".") .. ":master"
   local staging = ARGS["staging"] or target
+  local default_branch = ARGS["default-branch"] or "latest"
 
   local list = common.slice(ARGS, 4)
 
@@ -163,7 +179,7 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
       if #list == 0 or #common.grep(list, function(e) return e == v.id end) > 0 then
         local repo = v.remote:match("^(.*):[a-f0-9]+$")
         repo = repo:gsub("%.git$", "")
-        local following_branch = v.extra and v.extra.follow_branch or "latest"
+        local following_branch = ARGS["branch"] or (v.extra and v.extra.follow_branch) or default_branch
         if not remotes[repo] then remotes[repo] = {} end
         if not remotes[repo][following_branch] then remotes[repo][following_branch] = {} end
         table.insert(remotes[repo][following_branch], v)
@@ -180,7 +196,7 @@ if ARGS[2] == "gh" and ARGS[3] == 'check-stubs-update-pr' then
         local commit = commit_line:match("^(%S+)")
         local _, pinned = addons[1].remote:match("^.*:(%s+)$")
         if commit ~= pinned then
-          if create_addon_pr({ target = target, staging = staging, source = (remote .. ":" .. commit), ["no-pr"] = ARGS["no-pr"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end)) then
+          if create_addon_pr({ target = target, staging = staging, source = (remote .. ":" .. commit), ["no-pr"] = ARGS["no-pr"], ["no-commit"] = ARGS["no-commit"], ["ignore-version"] = ARGS["ignore-version"] }, common.map(addons, function(e) return e.id end)) then
             log.action(string.format("updated stub entry for %s to be pinned at %s based on branch %s", remote, commit, branch))
           end
         else
