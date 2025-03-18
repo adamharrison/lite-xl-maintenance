@@ -45,6 +45,8 @@ local function create_addon_pr(options, addons)
   local source_url, source_owner, source_project, source_branch = retrieve_owner_project_branch(source)
   assert(source_branch, "can't find source branch from" .. source)
   local source_commit = common.is_commit_hash(source_branch) and source_branch or run_command("git ls-remote %s refs/heads/%s", source_url, source_branch):gsub("%s+.*\n$", "")
+  print(string.format("https://raw.githubusercontent.com/%s/%s/%s/manifest.json", source_owner, source_project, source_commit))
+  print(common.get(string.format("https://raw.githubusercontent.com/%s/%s/%s/manifest.json", source_owner, source_project, source_commit)))
   local source_manifest = json.decode(common.get(string.format("https://raw.githubusercontent.com/%s/%s/%s/manifest.json", source_owner, source_project, source_commit)))
 
   local staging = options["staging"]
@@ -309,6 +311,7 @@ if ARGS[2] == "gh" and ARGS[3] == "release" then
   os.exit(0)
 end
 
+-- runs a remote lite-xl, and compiles it.
 if ARGS[2] == "gh" and ARGS[3] == "run" then
   ARGS = common.args(ARGS, { reinstall = "flag" })
   local newArgs = { ARGS[1], "run", "system" }
@@ -354,4 +357,58 @@ if ARGS[2] == "gh" and ARGS[3] == "run" then
   BINARY = target .. PATHSEP .. "lite-xl"
   DATADIR = target .. PATHSEP .. "data"
   ARGS = newArgs
+end
+
+-- updates the list of lite-xls in the manifest to incluide the specified release
+-- usage: lpm gh update-lite-xls manifest.json https://github.com/lite-xl/lite-xl v2.1.7 [suffix for release]
+if ARGS[2] == "gh" and ARGS[3] == "update-lite-xls" then
+  local manifest_path, url, release_tag, suffix = select(4, table.unpack(ARGS))
+  local manifest = json.decode(common.read(assert(manifest_path, "requires a manifest path")))
+  if not manifest["lite-xls"] then manifest["lite-xls"] = {} end
+  local owner, repo = assert(url, "requires a repo url"):match("https://github%.com/([%w%-]+)/([%w%-]+)")
+  assert(owner and repo, "error parsing url " .. url)
+  local release_info = json.decode(run_command("gh api repos/%s/%s/releases/tags/%s", owner, repo, assert(release_tag, "requires a release tag (for now)")))
+  local relevant_assets = {}
+  for i, asset in ipairs(assert(release_info.assets, "no assets found in release")) do
+    if asset.name:find("portable") then
+      local tag, arch, os = asset.name:match("lite%-xl%-([^%-]+)%-([%w_]+)%-([%w_]+)%-portable")
+      if tag and arch and os then
+        log.action(string.format("Found asset %s, for %s %s.", asset.name, arch, os))
+        local hash = system.hash(common.get(asset.browser_download_url))
+        if VERBOSE then log.action(string.format("Downloaded asset from %s, hash computed to be %s.", asset.browser_download_url, hash)) end
+        table.insert(relevant_assets, { 
+          arch = (arch == "universal" and { "x86_64-" .. os, "aarch64-" .. os } or (arch .. "-" .. os)), 
+          url = asset.browser_download_url,
+          checksum = hash
+        })
+      else
+        log.warning(string.format("Can't parse asset name %s.", asset.name))
+      end
+    else
+      log.warning(string.format("Ignoring non-portable asset %s.", asset.name))
+    end
+  end
+  assert(#relevant_assets > 0, "can't find a single relevant asset")
+  if release_tag == "continuous" then 
+    release_tag = "3.0" 
+    suffix = suffix or "continuous"
+  end
+  local version = release_tag:gsub("^v", "")
+  assert(version:find("^%d"), "release versions must begin with optionally `v`, followed by a number.")
+  if suffix then 
+    version = version .. "-" .. suffix
+  end
+  local lite_xl = { version = version, mod_version = MOD_VERSION or LATEST_MOD_VERSION, assets = relevant_assets }
+  local existing_lite_xl = common.grep(manifest["lite-xls"], function(e) return e.version == version end)[1]
+  if existing_lite_xl then
+    log.action(string.format("Updating existing entry for %s...", version))
+    for k,v in pairs(lite_xl) do existing_lite_xl[k] = v end
+  else
+    log.action(string.format("Adding new entry for %s...", version))
+    table.insert(manifest["lite-xls"], lite_xl)
+  end
+  table.sort(manifest["lite-xls"], function(a,b) return a.version > b.version end)
+  common.write(manifest_path, json.encode(manifest, { pretty = true }) .. "\n")
+  log.action("Done.")
+  os.exit(0)
 end
