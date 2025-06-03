@@ -25,7 +25,7 @@ function Repository.url(url, ...)
 end
 
 local function retrieve_owner_project_branch(url)
-  return url:match("^(.*[/:]([%w-]+)/([%w-]+)%.?g?i?t?):?([%w-]*)$")
+  return url:match("^(.*[/:]([%w-_]+)/([%w-_]+)%.?g?i?t?):?([%w-_]*)$")
 end
 
 local function retrieve_repository_origin(path)
@@ -43,7 +43,7 @@ local function create_addon_pr(options, addons)
 
   local source = options["source"]
   local source_url, source_owner, source_project, source_branch = retrieve_owner_project_branch(source)
-  assert(source_branch, "can't find source branch from" .. source)
+  assert(source_branch, "can't find source branch from " .. source)
   local source_commit = common.is_commit_hash(source_branch) and source_branch or run_command("git ls-remote %s refs/heads/%s", source_url, source_branch):gsub("%s+.*\n$", "")
   print(string.format("https://raw.githubusercontent.com/%s/%s/%s/manifest.json", source_owner, source_project, source_commit))
   print(common.get(string.format("https://raw.githubusercontent.com/%s/%s/%s/manifest.json", source_owner, source_project, source_commit)))
