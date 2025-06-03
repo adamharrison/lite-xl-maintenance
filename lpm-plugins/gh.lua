@@ -25,7 +25,7 @@ function Repository.url(url, ...)
 end
 
 local function retrieve_owner_project_branch(url)
-  return url:match("^(.*[/:]([%w-_]+)/([%w-_]+)%.?g?i?t?):?([%w-_]*)$")
+  return url:match("^(.*[/:]([%w-_]+)/([%w-_%.]-)%.?g?i?t?):?([%w-_]*)$")
 end
 
 local function retrieve_repository_origin(path)
