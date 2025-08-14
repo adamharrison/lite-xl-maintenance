@@ -1,0 +1,29 @@
+diff --git a/data/meson.build b/data/meson.build
+index f862862a..ec7551e7 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -12,6 +12,8 @@ if get_option('bundle_plugins').length() > 0
+             '--assume-yes',
+             'install',
+             get_option('bundle_plugins'),
++            '--repository=https://github.com/lite-xl/lite-xl-plugin-manager.git:3.0',
++            '--mod-version=4'
+         ],
+         install: true,
+         install_dir: [lpm_install_dir, false],
+diff --git a/scripts/generate-release-notes.sh b/scripts/generate-release-notes.sh
+index bbb42da4..4de24ec1 100755
+--- a/scripts/generate-release-notes.sh
++++ b/scripts/generate-release-notes.sh
+@@ -57,8 +57,9 @@ main() {
+   # use gh cli to get the last version
+   read -r last_version < <(gh release list --exclude-pre-releases --limit 1 | awk 'BEGIN {FS="\t"}; {print $3}')
+   if [[ -z "$last_version" ]]; then
+-    echo "error: cannot get last release git tag"
+-    exit 1
++    echo "warning: cannot get last release git tag"
++    echo '' > release-notes.md
++    exit 0
+   fi
+ 
+   export RELEASE_TAG="$version"
